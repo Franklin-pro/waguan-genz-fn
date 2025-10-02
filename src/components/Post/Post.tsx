@@ -12,6 +12,7 @@ interface User {
 
 interface Reply {
   userId: string | User;
+  username: string | User;
   text: string;
   timestamp: Date;
 }
@@ -261,7 +262,7 @@ const Post = ({ post }: PostProps) => {
                     {c.replies.map((reply, ri) => (
                       <div key={ri} className="text-sm text-gray-800">
                         <span className="font-semibold mr-2">
-                          {getUsername(reply.userId)}
+                          {getUsername(reply.username)}
                         </span>
                         {reply.text}
                       </div>
