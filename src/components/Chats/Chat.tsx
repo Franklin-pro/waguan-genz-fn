@@ -61,8 +61,10 @@ function Chat() {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const stickers = [
     '😀', '😂', '🥰', '😍', '🤔', '😎', '🥳', '😴',
@@ -71,7 +73,20 @@ function Chat() {
     '🐶', '🐱', '🦄', '🐸', '🦋', '🌸', '🌈', '☀️'
   ];
 
-  // Removed auto-scroll to prevent keyboard interference
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isTyping]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [message]);
 
   useEffect(() => {
     fetchFollowedUsers();
@@ -224,6 +239,8 @@ function Chat() {
       socket.off('callRejected');
       socket.off('callEnded');
       socket.off('callFailed');
+      socket.off('userTyping');
+      socket.off('userStoppedTyping');
     };
   }, [selectedChat, user]);
 
@@ -464,7 +481,9 @@ function Chat() {
   };
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !selectedChat || !user) return;
+    if (!message.trim() || !selectedChat || !user || isSending) return;
+    
+    setIsSending(true);
     
     try {
       // Create the message via API with consistent chat ID
@@ -490,6 +509,17 @@ function Chat() {
       
       setMessage('');
       
+      // Reset textarea height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      
+      // Stop typing indicator
+      socket.emit('stopTyping', {
+        chatId,
+        userId: user.id
+      });
+      
       // Emit the socket event for other users
       socket.emit('sendMessage', {
         chatId: chatId,
@@ -500,6 +530,9 @@ function Chat() {
       console.log('Sending message to chat:', chatId);
     } catch (error) {
       console.error('Failed to send message:', error);
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -739,7 +772,7 @@ function Chat() {
                           </span>
                         </div>
                       ) : (
-                        <p className="text-sm leading-relaxed mb-1">{msg.text}</p>
+                        <p className="text-sm leading-relaxed mb-1 whitespace-pre-wrap break-words">{msg.text}</p>
                       )}
                       <span className={`text-xs ${msg.sender === 'me' ? 'text-blue-100' : 'text-gray-500'}`}>
                         {msg.timestamp}
@@ -756,9 +789,9 @@ function Chat() {
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-gray-600">{typingUser} is typing</span>
                           <div className="flex gap-1">
-                            <div className="w-1 h-1 bg-gray-500 rounded-full animate-bounce"></div>
-                            <div className="w-1 h-1 bg-gray-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                            <div className="w-1 h-1 bg-gray-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                            <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"></div>
+                            <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                            <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                           </div>
                         </div>
                       </div>
@@ -795,10 +828,10 @@ function Chat() {
                 </div>
               )}
               
-              <div className="flex items-center gap-2 md:gap-3 bg-gray-50 rounded-full px-3 md:px-4 py-2">
+              <div className="flex items-end gap-2 md:gap-3 bg-gray-50 rounded-2xl px-3 md:px-4 py-2">
                 <button 
                   onClick={() => setShowStickers(!showStickers)}
-                  className={`p-1 transition-colors ${
+                  className={`p-1 transition-colors mb-1 ${
                     showStickers ? 'text-blue-500' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
@@ -807,28 +840,42 @@ function Chat() {
                 
                 {!isRecording ? (
                   <>
-                    <input
-                      type="text"
+                    <textarea
+                      ref={textareaRef}
                       value={message}
                       onChange={(e) => {
                         setMessage(e.target.value);
                         handleTyping();
                       }}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                      }}
                       onTouchStart={(e) => e.stopPropagation()}
                       onFocus={(e) => {
                         e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }}
-                      placeholder="Type a message..."
-                      className="flex-1 bg-transparent border-none outline-none text-sm py-1 md:py-2 min-w-0"
+                      placeholder="Type a message... (Shift+Enter for new line)"
+                      rows={1}
+                      className="flex-1 bg-transparent border-none outline-none text-sm py-1 md:py-2 min-w-0 resize-none max-h-32 overflow-y-auto"
+                      style={{ minHeight: '24px' }}
                     />
                     
                     {message.trim() ? (
                       <button
                         onClick={handleSendMessage}
-                        className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                        disabled={isSending}
+                        className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition-colors mb-1 ${
+                          isSending ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
                       >
-                        <Send size={16} className="md:w-[18px] md:h-[18px]" />
+                        {isSending ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Send size={16} className="md:w-[18px] md:h-[18px]" />
+                        )}
                       </button>
                     ) : (
                       <button
@@ -837,7 +884,7 @@ function Chat() {
                         onMouseLeave={stopRecording}
                         onTouchStart={startRecording}
                         onTouchEnd={stopRecording}
-                        className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition-colors select-none"
+                        className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition-colors select-none mb-1"
                       >
                         <Mic size={16} className="md:w-[18px] md:h-[18px]" />
                       </button>
@@ -855,7 +902,7 @@ function Chat() {
                     
                     <button
                       onClick={stopRecording}
-                      className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-colors"
+                      className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-colors mb-1"
                     >
                       <Square size={16} className="md:w-[18px] md:h-[18px]" />
                     </button>

@@ -155,7 +155,7 @@ const Feed = () => {
                   <a href="#" className="hover:text-gray-700">Privacy</a>
                   <a href="#" className="hover:text-gray-700">Terms</a>
                 </div>
-                <p>© 2024 ChatApp. All rights reserved.</p>
+                 <p>&copy; {new Date().getFullYear()} chatjam app. All rights reserved.</p>
               </div>
             </div>
           </div>

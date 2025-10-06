@@ -85,6 +85,7 @@ const Post = ({ post }: PostProps) => {
       
       const newReply: Reply = {
         userId: user.id,
+        username: user.username,
         text: replyText,
         timestamp: new Date(),
       };
